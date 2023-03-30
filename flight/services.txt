@@ -1,0 +1,547 @@
+package com.flight.service;
+ 
+import java.util.List;
+import org.springframework.http.ResponseEntity;
+import com.flight.entity.Airline;
+import com.flight.entity.AirlineEntity;
+public interface AirlineService {
+       public ResponseEntity<?> saveAirline(Airline airline);
+       public AirlineEntity getAirline(Integer airlineId);
+       public List<AirlineEntity> getAllAirline();
+       public AirlineEntity updateAirline(Airline airline, Integer airlineId);
+       public String deleteAirline(Integer airlineId);
+       public AirlineEntity availablityAirline(Boolean isBlock, Integer airlineId);
+}
+
+package com.flight.service;
+ 
+import java.util.List;
+import java.util.Optional;
+ 
+import javax.transaction.Transactional;
+ 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+ 
+import com.flight.entity.Airline;
+import com.flight.entity.AirlineEntity;
+import com.flight.exceptions.RecordAlreadyPresentException;
+import com.flight.exceptions.RecordNotFoundException;
+import com.flight.repository.AirlineRepository;
+ 
+@Service
+@Transactional
+public class AirlineServiceImpl implements AirlineService {
+ 
+       @Autowired
+       private AirlineRepository airlineRepository;
+ 
+       @Override
+       public ResponseEntity<?> saveAirline(Airline airline) {
+             Optional<AirlineEntity> findByName = airlineRepository.findByAirlineName(airline.getAirlineName());
+             AirlineEntity airlineEntity = new AirlineEntity(null, airline.getAirlineName(), airline.getContactNumber(),
+                          airline.getIsBlock(), airline.getFlightIDs());
+             if (!findByName.isPresent()) {
+                    return new ResponseEntity<>(airlineRepository.save(airlineEntity), HttpStatus.OK);
+             } else
+                    throw new RecordAlreadyPresentException(
+                                 "Airline with name : " + airline.getAirlineName() + " already present");
+       }
+ 
+       @Override
+       public AirlineEntity getAirline(Integer airlineId) {
+             Optional<AirlineEntity> findById = airlineRepository.findById(airlineId);
+             if (!findById.isPresent()) {
+                    throw new RecordNotFoundException("Airline with code: " + airlineId + " not exists");
+             }
+             return findById.get();
+       }
+ 
+       @Override
+       public List<AirlineEntity> getAllAirline() {
+ 
+             return airlineRepository.findAll();
+       }
+ 
+       @Override
+       public AirlineEntity updateAirline(Airline airline, Integer airlineId) {
+             Optional<AirlineEntity> findById = airlineRepository.findById(airlineId);
+             AirlineEntity airlineEntity = new AirlineEntity(airlineId, airline.getAirlineName(), airline.getContactNumber(),
+                          airline.getIsBlock(), airline.getFlightIDs());
+             if (findById.isPresent()) {
+                    airlineRepository.save(airlineEntity);
+             } else
+                    throw new RecordNotFoundException("Airline with code: " + airlineId + " not exists");
+             return airlineEntity;
+       }
+ 
+       @Override
+       public String deleteAirline(Integer airlineId) {
+             Optional<AirlineEntity> findById = airlineRepository.findById(airlineId);
+             if (findById.isPresent()) {
+                    airlineRepository.deleteById(airlineId);
+                    return "Airline removed";
+             } else
+                    throw new RecordNotFoundException("Airline with code: " + airlineId + " not exists");
+ 
+       }
+ 
+       @Override
+       public AirlineEntity availablityAirline(Boolean isBlock, Integer airlineId) {
+             Optional<AirlineEntity> findById = airlineRepository.findById(airlineId);
+             AirlineEntity airlineEntity = findById.get();
+             airlineEntity.setIsBlock(isBlock);
+             if (findById.isPresent()) {
+                    airlineRepository.save(airlineEntity);
+                    return airlineRepository.save(airlineEntity);
+             } else
+                    throw new RecordNotFoundException("Airline with code: " + airlineId + " not exists");
+ 
+       }
+ 
+}
+package com.flight.service;
+ 
+import com.flight.entity.Airport;
+ 
+public interface AirportService {
+      
+       public Airport getAirports();
+ 
+}
+ 
+package com.flight.service;
+ 
+import java.util.Arrays;
+ 
+import org.springframework.stereotype.Service;
+ 
+import com.flight.entity.Airport;
+ 
+@Service
+public class AirportServiceImpl implements AirportService{
+ 
+       @Override
+       public Airport getAirports() {
+             return new Airport(Arrays.asList(new String[] { "Mumbai","Kochi","New Delhi","Kolkata","Chennai" }));
+       }
+ 
+}
+package com.flight.service;
+ 
+import java.util.List;
+ 
+import org.springframework.http.ResponseEntity;
+ 
+import com.flight.entity.BookingRecord;
+ 
+public interface BookingService {
+ 
+       public ResponseEntity<?> createBooking(BookingRecord newBooking);
+ 
+       public List<BookingRecord> getHistory(String emailId);
+ 
+       public BookingRecord getBooking(long id);
+ 
+       public BookingRecord cancelBooking(long id);
+}
+package com.flight.service;
+ 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.Date;
+import java.util.List;
+import java.util.Set;
+ 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+ 
+import com.flight.entity.BookingRecord;
+import com.flight.entity.Discount;
+import com.flight.entity.Passenger;
+import com.flight.exceptions.RecordNotFoundException;
+import com.flight.repository.BookingRepository;
+import com.flight.repository.DiscountRepository;
+ 
+@Service
+public class BookingServiceImpl implements BookingService {
+ 
+       @Autowired
+       private BookingRepository bookingRepository;
+      
+       @Autowired
+       private DiscountRepository discountRepository;
+ 
+       /*
+       * @Autowired private PassengerRepository passengerRepository;
+       */
+       @Override
+       public ResponseEntity<?> createBooking(BookingRecord record) {
+            
+             Long pnrNo = ZonedDateTime.of(LocalDateTime.now(),
+                            ZoneId.systemDefault()).toInstant().toEpochMilli();
+            
+             record.setId(pnrNo);
+             Double fare = record.getFare()* record.getNoOfPassengers();
+             if(record.getDiscountCode()!= null) {
+                    Discount discount = discountRepository.findByDiscountCode(record.getDiscountCode()).get();
+                    fare = fare - (fare * discount.getDiscountPercent())/100;
+             }
+             record.setFare(fare);
+             Set<Passenger> passengers = record.getPassengers();
+             passengers.forEach(passenger -> passenger.setBookingRecord(record));
+             record.setBookingDate(new Date());
+             return new ResponseEntity<BookingRecord>(bookingRepository.save(record), HttpStatus.OK);
+ 
+       }
+ 
+       @Override
+       public List<BookingRecord> getHistory(String emailId) {
+             // HistoryResponse resp = new HistoryResponse();
+             List<BookingRecord> bookingList = null;
+             try {
+                    bookingList = bookingRepository.findByEmail(emailId);
+ 
+             } catch (Exception e) {
+                    System.out.println(e.getMessage());
+             }
+             return bookingList;
+       }
+ 
+       public BookingRecord getBooking(long id) {
+             return bookingRepository.findById(new Long(id)).get();
+       }
+       /*
+       * @Override public Booking getTicketDetails(String pnrNo) { // TODO
+       * Auto-generated method stub Booking booking =
+       * bookingRepository.findById(pnrNo).orElse(null);
+       *
+        * List<Passenger> passengers = passengerRepository.findByBookingId(pnrNo);
+       * booking.setPassengers(passengers);
+       *
+        * return booking; }
+       */
+ 
+       @Override
+       public BookingRecord cancelBooking(long id) {
+             BookingRecord deletedRecord = bookingRepository.findById(new Long(id)).get();
+             if (deletedRecord != null && (deletedRecord.getFlightDate().minusDays(1).isAfter(LocalDate.now())))
+                    bookingRepository.deleteById(new Long(id));
+             else
+                    throw new RecordNotFoundException("You may cancel the booking 24 hrs before only...");
+             return deletedRecord;
+       }
+ 
+}
+ --------------
+ package com.flight.service;
+ 
+import java.util.List;
+ 
+import com.flight.entity.Discount;
+ 
+public interface DiscountService {
+             
+              public Discount addDiscount(Discount discount);
+             
+              public Discount deleteDiscount(Integer discountId);
+             
+              public List<Discount> getAllDiscount();
+ 
+}
+package com.flight.service;
+ 
+import java.util.List;
+ 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+ 
+import com.flight.entity.Discount;
+import com.flight.exceptions.RecordAlreadyPresentException;
+import com.flight.repository.DiscountRepository;
+ 
+@Service
+public class DiscountServiceImpl implements DiscountService {
+ 
+              @Autowired
+              private DiscountRepository discountRepository;
+ 
+              @Override
+              public Discount addDiscount(Discount discount) {
+              if(!discountRepository.findByDiscountCode(discount.getDiscountCode()).isPresent())
+                                           return discountRepository.save(discount);
+                             else {
+                                           throw new RecordAlreadyPresentException("Discount with code: "+ discount.getDiscountCode()+" already exists");
+                             }
+              }
+ 
+              @Override
+              public Discount deleteDiscount(Integer discountId) {
+                            Discount deletedRecord = discountRepository.getById(discountId);
+                             if (deletedRecord != null) {
+                                           discountRepository.deleteById(discountId);
+                             }
+                             return deletedRecord;
+              }
+ 
+              @Override
+              public List<Discount> getAllDiscount() {
+                             // TODO Auto-generated method stub
+                             return discountRepository.findAll();
+              }
+ 
+}
+package com.flight.service;
+ 
+import java.util.List;
+ 
+import com.flight.entity.FlightEntity;
+ 
+public interface FlightService {
+ 
+              public FlightEntity saveFlight(FlightEntity flightEntity);
+ 
+              public FlightEntity updateFlight(FlightEntity flightEntity, Integer flightId);
+ 
+              public FlightEntity getFlight(String flightCode);
+              public FlightEntity getFlightbyId(Integer flightId);
+ 
+              public List<FlightEntity> getAllFlights();
+ 
+              public String deleteFlight(Integer flightId);
+ 
+              public FlightEntity searchFlight(String airlineCode, String flightCode);
+ 
+}
+package com.flight.service;
+ 
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+ 
+import javax.transaction.Transactional;
+ 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+ 
+import com.flight.entity.AirlineEntity;
+import com.flight.entity.FlightEntity;
+import com.flight.exceptions.RecordAlreadyPresentException;
+import com.flight.exceptions.RecordNotFoundException;
+import com.flight.repository.AirlineRepository;
+import com.flight.repository.FlightRepository;
+ 
+@Service
+@Transactional
+public class FlightServiceImpl implements FlightService {
+ 
+              @Autowired
+              private FlightRepository flightRepository;
+ 
+              @Autowired
+              private AirlineRepository airlineRepository;
+ 
+              @Override
+              public FlightEntity saveFlight(FlightEntity flightEntity) {
+ 
+                             Optional<FlightEntity> findByName = flightRepository.findByFlightName(flightEntity.getFlightCode());
+                             AirlineEntity airlineFlight = airlineRepository.findAll().stream()
+                                                          .filter((airline) -> airline.getAirlineName().equals(flightEntity.getAirlineCode()))
+                                                          .collect(Collectors.toList()).get(0);
+                             if (!findByName.isPresent()) {
+                                           if (airlineFlight != null) {
+ 
+                                                          FlightEntity savedEntity = flightRepository.save(flightEntity);
+                                                          String flightIDs = airlineFlight.getFlightIDs();
+                                                          if (airlineFlight.getFlightIDs() != null && airlineFlight.getFlightIDs().length() > 0)
+                                                                        airlineFlight.setFlightIDs(flightIDs + "," + savedEntity.getFlightCode());
+                                                          else
+                                                                        airlineFlight.setFlightIDs(savedEntity.getFlightCode());
+                                                          airlineRepository.save(airlineFlight);
+                                                          return savedEntity;
+                                           } else {
+                                                          throw new RecordNotFoundException(
+                                                                                      "Airline with code: " + flightEntity.getAirlineCode() + " not exists");
+                                           }
+                             } else
+                                           throw new RecordAlreadyPresentException(
+                                                                        "Flight with code : " + flightEntity.getFlightCode() + " already present");
+              }
+ 
+              @Override
+              public FlightEntity updateFlight(FlightEntity flightEntity,Integer flightId) {
+                             FlightEntity flight = flightRepository.findById(flightId).get();
+                             if (flight != null) {
+                             //flight.setFlightCode(flightEntity.getFlightCode());
+                             //flight.setAirlineCode(flightEntity.getAirlineCode());
+                             //flight.setPrice(flightEntity.getPrice());
+                             flight.setStatus(flightEntity.getStatus());
+                             flight.setTotalSeats(flightEntity.getTotalSeats());
+                            
+                             return flightRepository.save(flight);
+                             }else {
+                                           throw new RecordNotFoundException(
+                                                                        "Flight with id: " + flightEntity.getFlightId() + " not exists");
+                             }
+              }
+ 
+              @Override
+              public FlightEntity getFlight(String flightCode) {
+ 
+                             return flightRepository.findByFlightName(flightCode).get();
+              }
+ 
+              @Override
+              public List<FlightEntity> getAllFlights() {
+ 
+                             return flightRepository.findAll();
+              }
+ 
+              @Override
+              public String deleteFlight(Integer flightId) {
+                             //Optional<FlightEntity> findByName = flightRepository.findByFlightName(flightCode);
+                             Optional<FlightEntity> findByName = flightRepository.findById(flightId);
+                             AirlineEntity airlineFlight = airlineRepository.findAll().stream()
+                                                          .filter((airline) -> airline.getAirlineName().equals(findByName.get().getAirlineCode()))
+                                                          .collect(Collectors.toList()).get(0);
+                             if (findByName.isPresent()) {
+                                           if (airlineFlight != null) {
+ 
+                                           flightRepository.deleteByFlightName(findByName.get().getFlightCode());
+                                                          String flightIDs = airlineFlight.getFlightIDs();
+                                                         airlineFlight.setFlightIDs(flightIDs.replace("," + flightId, ""));
+                                                          airlineRepository.save(airlineFlight);
+                                                         return "Flight deleted";
+                                           } else {
+                                                          throw new RecordNotFoundException(
+                                                                                      "Airline with code: " + findByName.get().getAirlineCode() + " not exists");
+                                           }
+                             } else
+                                           throw new RecordAlreadyPresentException(
+                                                                        "Flight with code : " + findByName.get().getFlightCode() + " already present");
+              }
+ 
+              @Override
+              public FlightEntity searchFlight(String airlineCode, String flightCode) {
+                            
+                             Optional<AirlineEntity> findByName = airlineRepository.findByAirlineName(airlineCode);
+                             if(findByName.isPresent()) {
+                                           Optional<FlightEntity> findByNameFlight  = flightRepository.findByFlightName(flightCode);
+                                           if(!findByNameFlight.isPresent()) {
+                                                          return findByNameFlight.get();
+                                           }else {
+                                                          throw new RecordNotFoundException(
+                                                                                      "Flight with code : " + findByNameFlight.get().getFlightCode() + " not exists");
+                                           }
+                             }else {
+                                           throw new RecordNotFoundException(
+                                                                        "Airline with code: " + findByName.get().getAirlineName() + " not exists");
+                             }
+              }
+ 
+              @Override
+              public FlightEntity getFlightbyId(Integer flightId) {
+                             return flightRepository.findById(flightId).get();
+              }
+ 
+}
+package com.flight.service;
+ 
+import java.util.List;
+ 
+import com.flight.entity.ScheduledFlight;
+ 
+public interface ScheduleService {
+ 
+              public ScheduledFlight addScheduledFlight(ScheduledFlight scheduledFlight);
+ 
+              public Iterable<ScheduledFlight> viewAllScheduledFlights();
+ 
+              public List<ScheduledFlight> viewAvailableFlights();
+ 
+              public ScheduledFlight deleteSchedule(Integer scheduleFlightId);
+}
+package com.flight.service;
+ 
+import java.util.ArrayList;
+import java.util.List;
+ 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+ 
+import com.flight.entity.ScheduledFlight;
+import com.flight.repository.ScheduleFlightRepository;
+import com.flight.repository.ScheduleRepository;
+ 
+@Service
+public class ScheduleServiceImpl implements ScheduleService {
+ 
+              @Autowired
+              ScheduleFlightRepository scheduleFlightRepository;
+ 
+              @Autowired
+              ScheduleRepository scheduleRepository;
+ 
+              @Override
+              public ScheduledFlight addScheduledFlight(ScheduledFlight scheduledFlight) {
+                             // TODO Auto-generated method stub
+                             return scheduleFlightRepository.save(scheduledFlight);
+              }
+ 
+              @Override
+              public Iterable<ScheduledFlight> viewAllScheduledFlights() {
+                             // TODO Auto-generated method stub
+                             return scheduleFlightRepository.findAll();
+              }
+ 
+              @Override
+              public List<ScheduledFlight> viewAvailableFlights() {
+ 
+                             List<ScheduledFlight> allSchedule = scheduleFlightRepository.findAll();
+ 
+                             List<ScheduledFlight> avilableSchedule = new ArrayList<>();
+                             for (ScheduledFlight scheduledFlight : allSchedule) {
+                                           if (scheduledFlight.getFlight().getStatus() == false) {
+                                                          avilableSchedule.add(scheduledFlight);
+                                           }
+                             }
+                             return avilableSchedule;
+              }
+ 
+              @Override
+              public ScheduledFlight deleteSchedule(Integer scheduleFlightId) {
+ 
+                             ScheduledFlight deletedRecord = scheduleFlightRepository.findById(scheduleFlightId).get();
+                             if (deletedRecord != null)
+                                           scheduleFlightRepository.deleteById(scheduleFlightId);
+ 
+                             return deletedRecord;
+              }
+ 
+}
+ 
+spring.datasource.url=jdbc:mysql://localhost:3306/flight_management
+spring.datasource.username=root
+spring.datasource.password=Pass@word1
+ 
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL8Dialect
+ 
+spring.jpa.hibernate.ddl-auto=create
+ 
+logging.level.org.hibernate.SQL=DEBUG
+logging.level.org.hibernate.type=TRACE
+ 
+spring.application.name=FLIGHT-SERVICE
+ 
+eureka.instance.hostname=localhost
+ 
+server.port=8081
+ 
+spring.mvc.pathmatch.matching-strategy=ant-path-matcher
+ 

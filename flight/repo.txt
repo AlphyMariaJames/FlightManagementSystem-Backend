@@ -1,0 +1,1433 @@
+package com.flight.api.config;
+
+ 
+
+import org.springframework.context.annotation.Bean;
+
+import org.springframework.context.annotation.Configuration;
+
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+
+import org.springframework.kafka.core.KafkaTemplate;
+
+import org.springframework.kafka.core.ProducerFactory;
+
+ 
+
+import springfox.documentation.builders.ApiInfoBuilder;
+
+import springfox.documentation.builders.RequestHandlerSelectors;
+
+import springfox.documentation.service.ApiInfo;
+
+import springfox.documentation.spi.DocumentationType;
+
+import springfox.documentation.spring.web.plugins.Docket;
+
+import springfox.documentation.swagger2.annotations.EnableSwagger2;
+
+ 
+
+import static springfox.documentation.builders.PathSelectors.regex;
+
+ 
+
+import java.util.HashMap;
+
+import java.util.Map;
+
+ 
+
+import org.apache.kafka.clients.producer.ProducerConfig;
+
+import org.apache.kafka.common.serialization.StringSerializer;
+
+import org.springframework.kafka.support.serializer.JsonSerializer;
+
+ 
+
+@Configuration
+
+@EnableSwagger2
+
+public class SwaggerConfig {
+
+ 
+
+       @Bean
+
+       public Docket postsApi() {
+
+             return new Docket(DocumentationType.SWAGGER_2).groupName("flight-api").apiInfo(apiInfo()).select()
+
+                    .apis(RequestHandlerSelectors.basePackage("com.flight.controller"))
+
+                          .paths(regex("/*.*"))
+
+                          .build();
+
+       }
+
+ 
+
+       private ApiInfo apiInfo() {
+
+             return new ApiInfoBuilder().title("flight-management-API").description("flight-management-system")
+
+                           .termsOfServiceUrl(https://github.com/IIHT-spring)
+
+                          .license("This is licensed to Abc government college").licenseUrl(abc.goverment@gmail.com)
+
+                          .version("1.0").build();
+
+       }
+
+ 
+
+       @Bean
+
+       public ProducerFactory<String, Object> producerFactory() {
+
+             Map<String, Object> configs = new HashMap<>();
+
+              configs.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+
+              configs.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+
+            configs.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+
+ 
+
+             return new DefaultKafkaProducerFactory<String, Object>(configs);
+
+       }
+
+ 
+
+       @Bean
+
+       public KafkaTemplate<String, Object> kafkaTemplate() {
+
+             return new KafkaTemplate<>(producerFactory());
+
+       }
+
+}
+
+ 
+
+package com.flight.aop;
+
+ 
+
+import org.springframework.http.HttpStatus;
+
+ 
+
+public class ApiError {
+
+ 
+
+       private HttpStatus status;
+
+       private String message;
+
+       // private List<String> errors;
+
+ 
+
+       public ApiError(HttpStatus status, String message/* , List<String> errors */) {
+
+             super();
+
+             this.status = status;
+
+             this.message = message;
+
+             // this.errors = errors;
+
+       }
+
+ 
+
+       /*
+
+       * public ApiError(HttpStatus status, String message , String error ) { super();
+
+       * this.status = status; this.message = message; // errors =
+
+       * Arrays.asList(error); }
+
+       */
+
+ 
+
+       public HttpStatus getStatus() {
+
+             return status;
+
+       }
+
+ 
+
+       public void setStatus(HttpStatus status) {
+
+             this.status = status;
+
+       }
+
+ 
+
+       public String getMessage() {
+
+             return message;
+
+       }
+
+ 
+
+       public void setMessage(String message) {
+
+             this.message = message;
+
+       }
+
+ 
+
+       /*
+
+       * public List<String> getErrors() { return errors; }
+
+       *
+
+        * public void setErrors(List<String> errors) { this.errors = errors; }
+
+       */
+
+ 
+
+       @Override
+
+       public String toString() {
+
+             return "ApiError [status=" + status + ", message=" + message + /* ", errors=" + errors + */ "]";
+
+       }
+
+ 
+
+}
+
+ 
+
+package com.flight.aop;
+
+ 
+
+import org.springframework.http.HttpStatus;
+
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.web.bind.annotation.ControllerAdvice;
+
+import org.springframework.web.bind.annotation.ExceptionHandler;
+
+import org.springframework.web.context.request.WebRequest;
+
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+
+ 
+
+import com.flight.exceptions.RecordAlreadyPresentException;
+
+import com.flight.exceptions.RecordNotFoundException;
+
+ 
+
+@ControllerAdvice
+
+public class AppExceptionHandler extends ResponseEntityExceptionHandler{
+
+ 
+
+              @ExceptionHandler(value = {RecordAlreadyPresentException.class, RecordNotFoundException.class})
+
+              public ResponseEntity<Object> handleAnyException(Exception ex, WebRequest request){
+
+                            
+
+                             String errorMessage = ex.getLocalizedMessage();
+
+                             if(errorMessage == null)
+
+                                           errorMessage = ex.toString();
+
+                             ApiError apiError = new ApiError(HttpStatus.BAD_REQUEST, errorMessage);
+
+                            
+
+                             return new ResponseEntity<Object>(apiError, HttpStatus.BAD_REQUEST);
+
+              }
+
+}
+
+package com.flight.controller;
+
+ 
+
+import java.util.List;
+
+ 
+
+import javax.validation.Valid;
+
+import javax.ws.rs.QueryParam;
+
+ 
+
+import org.springframework.beans.factory.annotation.Autowired;
+
+import org.springframework.http.HttpStatus;
+
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.kafka.core.KafkaTemplate;
+
+import org.springframework.web.bind.annotation.CrossOrigin;
+
+import org.springframework.web.bind.annotation.DeleteMapping;
+
+import org.springframework.web.bind.annotation.GetMapping;
+
+import org.springframework.web.bind.annotation.PathVariable;
+
+import org.springframework.web.bind.annotation.PostMapping;
+
+import org.springframework.web.bind.annotation.PutMapping;
+
+import org.springframework.web.bind.annotation.RequestBody;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import org.springframework.web.bind.annotation.RestController;
+
+ 
+
+import com.flight.entity.Airline;
+
+import com.flight.entity.AirlineEntity;
+
+import com.flight.service.AirlineService;
+
+ 
+
+@CrossOrigin(origins = http://localhost:4200)
+
+@RestController
+
+@RequestMapping("/airline")
+
+public class AirlineController {
+
+ 
+
+              @Autowired
+
+              private AirlineService airlineService;
+
+ 
+
+              @Autowired
+
+              private KafkaTemplate<String, Object> template;
+
+ 
+
+              private String topic = "flight-service";
+
+ 
+
+              @GetMapping("/publish/{name}")
+
+              public String publisher(@PathVariable String name) {
+
+                             template.send(topic, "Hi " + name + " welcome to Spring kafka.!!");
+
+                             return "Data published";
+
+              }
+
+ 
+
+              @GetMapping("/publishJson")
+
+              public String publisher() {
+
+                             Airline airline = new Airline(11, "Lee", "9877876545", true, null);
+
+                             template.send(topic, airline);
+
+                             return "Json data published";
+
+              }
+
+              @GetMapping("/getallairline")
+
+              public ResponseEntity<?> getAirline() {
+
+                             ResponseEntity<List<AirlineEntity>> responseEntity = new ResponseEntity<>(airlineService.getAllAirline(),
+
+                                                          HttpStatus.OK);
+
+ 
+
+                             return responseEntity;
+
+              }
+
+ 
+
+              // @ExceptionHandler(RecordAlreadyPresentException.class)
+
+              @PostMapping("/save")
+
+              public ResponseEntity<?> saveAirline(@Valid @RequestBody Airline airline) {
+
+ 
+
+                             return airlineService.saveAirline(airline);
+
+ 
+
+              }
+
+ 
+
+              @PutMapping("/update/{airlineId}")
+
+              public ResponseEntity<?> updateAirline(@RequestBody Airline airline, @PathVariable Integer airlineId) {
+
+ 
+
+                             // try {
+
+                             ResponseEntity<?> responseEntity = new ResponseEntity<>(airlineService.updateAirline(airline, airlineId),
+
+                                                          HttpStatus.OK);
+
+                             /*
+
+                             * } catch (Exception e) { e.printStackTrace(); responseEntity = new
+
+                             * ResponseEntity<>(HttpStatus.NOT_FOUND); }
+
+                             */
+
+                             return responseEntity;
+
+ 
+
+              }
+
+ 
+
+              @PutMapping("/avilable/{airlineId}")
+
+              public ResponseEntity<?> availablityAirline(@QueryParam("isBlock") Boolean isBlock,
+
+                                           @PathVariable Integer airlineId) {
+
+ 
+
+                             // try {
+
+                             ResponseEntity<?> responseEntity = new ResponseEntity<>(airlineService.availablityAirline(isBlock, airlineId),
+
+                                                          HttpStatus.OK);
+
+                             /*
+
+                             * } catch (Exception e) { e.printStackTrace(); responseEntity = new
+
+                             * ResponseEntity<>(HttpStatus.NOT_FOUND); }
+
+                             */
+
+                             return responseEntity;
+
+ 
+
+              }
+
+ 
+
+              @DeleteMapping("/delete/{airlineId}")
+
+              public ResponseEntity<?> deleteFlight(@PathVariable Integer airlineId) {
+
+ 
+
+                             // try {
+
+                             ResponseEntity<?> responseEntity = new ResponseEntity<>(airlineService.deleteAirline(airlineId), HttpStatus.OK);
+
+                             /*
+
+                             * } catch (Exception e) { e.printStackTrace(); responseEntity = new
+
+                             * ResponseEntity<>(HttpStatus.NOT_FOUND); }
+
+                             */
+
+                             return responseEntity;
+
+ 
+
+              }
+
+ 
+
+}
+
+----
+package com.flight.controller;
+
+ 
+
+import org.springframework.beans.factory.annotation.Autowired;
+
+import org.springframework.http.HttpStatus;
+
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.web.bind.annotation.CrossOrigin;
+
+import org.springframework.web.bind.annotation.GetMapping;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import org.springframework.web.bind.annotation.RestController;
+
+ 
+
+import com.flight.entity.Airport;
+
+import com.flight.service.AirportService;
+
+ 
+
+@CrossOrigin(origins = http://localhost:4200)
+
+@RestController
+
+@RequestMapping("/airport")
+
+public class AirportController {
+
+ 
+
+              @Autowired
+
+              private AirportService airportService;
+
+ 
+
+              @GetMapping("")
+
+              public ResponseEntity<?> getFlight() {
+
+                             ResponseEntity<Airport> responseEntity = new ResponseEntity<>(HttpStatus.OK);
+
+                             try {
+
+                                           responseEntity = new ResponseEntity<>(airportService.getAirports(), HttpStatus.OK);
+
+                             } catch (Exception e) {
+
+                                           e.printStackTrace();
+
+                                           responseEntity = new ResponseEntity<>(HttpStatus.NOT_FOUND);
+
+                             }
+
+                             return responseEntity;
+
+                             // return new ResponseEntity<>("SignIn failed", HttpStatus.OK);
+
+              }
+
+ 
+
+}
+
+package com.flight.controller;
+
+ 
+
+import org.springframework.beans.factory.annotation.Autowired;
+
+import org.springframework.http.HttpStatus;
+
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.web.bind.annotation.CrossOrigin;
+
+import org.springframework.web.bind.annotation.DeleteMapping;
+
+import org.springframework.web.bind.annotation.GetMapping;
+
+import org.springframework.web.bind.annotation.PathVariable;
+
+import org.springframework.web.bind.annotation.PostMapping;
+
+import org.springframework.web.bind.annotation.RequestBody;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import org.springframework.web.bind.annotation.RestController;
+
+import org.springframework.web.client.RestTemplate;
+
+ 
+
+import com.flight.entity.BookingRecord;
+
+import com.flight.entity.User;
+
+import com.flight.service.BookingService;
+
+ 
+
+@CrossOrigin(origins = http://localhost:4200)
+
+@RestController
+
+@RequestMapping("/booking")
+
+public class BookingController {
+
+ 
+
+              @Autowired(required = true)
+
+              BookingService bookingService;
+
+             
+
+              @Autowired
+
+              private RestTemplate restTemplate;
+
+ 
+
+              @PostMapping("/save")
+
+              // @ExceptionHandler(RecordAlreadyPresentException.class)
+
+              public ResponseEntity<?> createBooking(@RequestBody BookingRecord bookingRecord) {
+
+ 
+
+                             /*
+
+                             * User user = this.restTemplate.getForObject(http://USER-SERVICE/user/ +
+
+                             * userName, User.class);
+
+                             */
+
+ 
+
+                             return bookingService.createBooking(bookingRecord);
+
+              }
+
+ 
+
+              @GetMapping("/history/{email}")
+
+              public ResponseEntity<?> bookingHistory(@PathVariable String email) {
+
+ 
+
+                             return new ResponseEntity(bookingService.getHistory(email), HttpStatus.OK);
+
+              }
+
+ 
+
+              @GetMapping("/ticket/{pnrNo}")
+
+              public ResponseEntity<?> getTicketDetails(@PathVariable Long pnrNo) {
+
+ 
+
+                             return new ResponseEntity(bookingService.getBooking(pnrNo), HttpStatus.OK);
+
+              }
+
+ 
+
+              @DeleteMapping("/cancel/{pnrNo}")
+
+              public BookingRecord getBooking(@PathVariable long pnrNo) {
+
+                             return bookingService.cancelBooking(pnrNo);
+
+              }
+
+ 
+
+}
+
+package com.flight.controller;
+
+ 
+
+import javax.validation.Valid;
+
+ 
+
+import org.springframework.beans.factory.annotation.Autowired;
+
+import org.springframework.http.HttpStatus;
+
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.web.bind.annotation.CrossOrigin;
+
+import org.springframework.web.bind.annotation.DeleteMapping;
+
+import org.springframework.web.bind.annotation.GetMapping;
+
+import org.springframework.web.bind.annotation.PathVariable;
+
+import org.springframework.web.bind.annotation.PostMapping;
+
+import org.springframework.web.bind.annotation.RequestBody;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import org.springframework.web.bind.annotation.RestController;
+
+ 
+
+import com.flight.entity.Discount;
+
+import com.flight.service.DiscountService;
+
+ 
+
+@CrossOrigin(origins = http://localhost:4200)
+
+@RestController
+
+@RequestMapping("/discount")
+
+public class DiscountController {
+
+ 
+
+              @Autowired
+
+              private DiscountService discountService;
+
+ 
+
+              @GetMapping("/getall")
+
+              public ResponseEntity<?> getAirline() {
+
+                             return new ResponseEntity<>(discountService.getAllDiscount(), HttpStatus.OK);
+
+ 
+
+              }
+
+ 
+
+              @PostMapping("/save")
+
+              public ResponseEntity<?> saveAirline(@Valid @RequestBody Discount discount) {
+
+ 
+
+                             return new ResponseEntity<>(discountService.addDiscount(discount), HttpStatus.OK);
+
+ 
+
+              }
+
+ 
+
+              @DeleteMapping("/delete/{discountId}")
+
+              public ResponseEntity<?> deleteFlight(@PathVariable Integer discountId) {
+
+ 
+
+                             return new ResponseEntity<>(discountService.deleteDiscount(discountId), HttpStatus.OK);
+
+ 
+
+              }
+
+ 
+
+}
+
+package com.flight.controller;
+
+ 
+
+import java.util.List;
+
+ 
+
+import javax.ws.rs.QueryParam;
+
+ 
+
+import org.springframework.beans.factory.annotation.Autowired;
+
+import org.springframework.http.HttpStatus;
+
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.web.bind.annotation.CrossOrigin;
+
+import org.springframework.web.bind.annotation.DeleteMapping;
+
+import org.springframework.web.bind.annotation.GetMapping;
+
+import org.springframework.web.bind.annotation.PathVariable;
+
+import org.springframework.web.bind.annotation.PostMapping;
+
+import org.springframework.web.bind.annotation.PutMapping;
+
+import org.springframework.web.bind.annotation.RequestBody;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import org.springframework.web.bind.annotation.RestController;
+
+ 
+
+import com.flight.entity.FlightEntity;
+
+import com.flight.service.FlightService;
+
+ 
+
+@CrossOrigin(origins = http://localhost:4200)
+
+@RestController
+
+@RequestMapping("/flight")
+
+public class FlightController {
+
+ 
+
+              @Autowired
+
+              private FlightService flightService;
+
+ 
+
+              @GetMapping("/getallflights")
+
+              public ResponseEntity<?> getFlight() {
+
+                             ResponseEntity<List<FlightEntity>> responseEntity = new ResponseEntity<>(HttpStatus.OK);
+
+                             try {
+
+                                           responseEntity = new ResponseEntity<>(flightService.getAllFlights(), HttpStatus.OK);
+
+                             } catch (Exception e) {
+
+                                           e.printStackTrace();
+
+                                           responseEntity = new ResponseEntity<>(HttpStatus.NOT_FOUND);
+
+                             }
+
+                             return responseEntity;
+
+                             // return new ResponseEntity<>("SignIn failed", HttpStatus.OK);
+
+              }
+
+ 
+
+              @GetMapping("/getflight/{flightCode}")
+
+              public ResponseEntity<?> getFlight(@PathVariable String flightCode) {
+
+                             ResponseEntity<FlightEntity> responseEntity = new ResponseEntity<>(HttpStatus.OK);
+
+                             try {
+
+                                           responseEntity = new ResponseEntity<>(flightService.getFlight(flightCode), HttpStatus.OK);
+
+                             } catch (Exception e) {
+
+                                           e.printStackTrace();
+
+                                           responseEntity = new ResponseEntity<>(HttpStatus.NOT_FOUND);
+
+                             }
+
+                             return responseEntity;
+
+                             // return new ResponseEntity<>("SignIn failed", HttpStatus.OK);
+
+              }
+
+ 
+
+              @GetMapping("/getflightbyid/{flightId}")
+
+              public ResponseEntity<?> getFlightbyId(@PathVariable Integer flightId) {
+
+                             ResponseEntity<FlightEntity> responseEntity = new ResponseEntity<>(HttpStatus.OK);
+
+                             try {
+
+                                           responseEntity = new ResponseEntity<>(flightService.getFlightbyId(flightId), HttpStatus.OK);
+
+                             } catch (Exception e) {
+
+                                           e.printStackTrace();
+
+                                           responseEntity = new ResponseEntity<>(HttpStatus.NOT_FOUND);
+
+                             }
+
+                             return responseEntity;
+
+                             // return new ResponseEntity<>("SignIn failed", HttpStatus.OK);
+
+              }
+
+ 
+
+              @PostMapping("/save")
+
+              public ResponseEntity<?> saveFlight(@RequestBody FlightEntity flightEntity) {
+
+ 
+
+                             ResponseEntity<FlightEntity> responseEntity = new ResponseEntity<>(HttpStatus.OK);
+
+                             try {
+
+ 
+
+                                           responseEntity = new ResponseEntity<>(flightService.saveFlight(flightEntity), HttpStatus.OK);
+
+                             } catch (Exception e) {
+
+                                           e.printStackTrace();
+
+                                           responseEntity = new ResponseEntity<>(HttpStatus.NOT_FOUND);
+
+                             }
+
+                             return responseEntity;
+
+ 
+
+              }
+
+ 
+
+              @PutMapping("/update/{flightId}")
+
+              public ResponseEntity<?> updateFlight(@RequestBody FlightEntity flightEntity, @PathVariable Integer flightId) {
+
+ 
+
+                             ResponseEntity<FlightEntity> responseEntity = new ResponseEntity<>(HttpStatus.OK);
+
+                             try {
+
+                                           responseEntity = new ResponseEntity<>(flightService.updateFlight(flightEntity, flightId), HttpStatus.OK);
+
+                             } catch (Exception e) {
+
+                                           e.printStackTrace();
+
+                                           responseEntity = new ResponseEntity<>(HttpStatus.NOT_FOUND);
+
+                             }
+
+                             return responseEntity;
+
+ 
+
+              }
+
+ 
+
+// search API
+
+              @GetMapping("/search/")
+
+              public ResponseEntity<?> updateFlight(@QueryParam("airlineID") String airlineCode,
+
+                                           @QueryParam("flightId") String flightCode) {
+
+ 
+
+                             ResponseEntity<FlightEntity> responseEntity = new ResponseEntity<>(HttpStatus.OK);
+
+                             try {
+
+                                           responseEntity = new ResponseEntity<>(flightService.searchFlight(airlineCode, flightCode), HttpStatus.OK);
+
+                             } catch (Exception e) {
+
+                                           e.printStackTrace();
+
+                                           responseEntity = new ResponseEntity<>(HttpStatus.NOT_FOUND);
+
+                             }
+
+                             return responseEntity;
+
+ 
+
+              }
+
+ 
+
+              @DeleteMapping("/delete/{flightId}")
+
+              public ResponseEntity<?> deleteFlight(@PathVariable Integer flightId) {
+
+ 
+
+                             return new ResponseEntity<>(flightService.deleteFlight(flightId), HttpStatus.OK);
+
+ 
+
+              }
+
+}
+
+package com.flight.controller;
+
+ 
+
+import java.util.List;
+
+ 
+
+import javax.validation.Valid;
+
+ 
+
+import org.springframework.beans.factory.annotation.Autowired;
+
+import org.springframework.http.HttpStatus;
+
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.web.bind.annotation.CrossOrigin;
+
+import org.springframework.web.bind.annotation.DeleteMapping;
+
+import org.springframework.web.bind.annotation.GetMapping;
+
+import org.springframework.web.bind.annotation.PathVariable;
+
+import org.springframework.web.bind.annotation.PostMapping;
+
+import org.springframework.web.bind.annotation.RequestBody;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import org.springframework.web.bind.annotation.RestController;
+
+ 
+
+import com.flight.entity.Schedule;
+
+import com.flight.entity.ScheduledFlight;
+
+import com.flight.exceptions.RecordNotFoundException;
+
+import com.flight.service.AirportService;
+
+import com.flight.service.FlightService;
+
+import com.flight.service.ScheduleService;
+
+ 
+
+@CrossOrigin(origins = http://localhost:4200)
+
+@RestController
+
+@RequestMapping("/schedule")
+
+public class ScheduleController {
+
+ 
+
+       @Autowired
+
+       ScheduleService scheduleService;
+
+ 
+
+       @Autowired
+
+       AirportService airportService;
+
+ 
+
+       @Autowired
+
+       FlightService flightService;
+
+ 
+
+       @PostMapping("/save/{flightId}")
+
+       public ResponseEntity<?> addSchedule(@Valid @RequestBody ScheduledFlight scheduledFlight,
+
+                    @PathVariable Integer flightId) {
+
+             Schedule schedule = scheduledFlight.getSchedule();
+
+       schedule.setScheduleId(scheduledFlight.getScheduleFlightId());
+
+             /*
+
+             * try { schedule.setSrcAirport(airportService.viewAirport(source)); } catch
+
+             * (RecordNotFoundException e) { return new ResponseEntity("Airport Not Found",
+
+             * HttpStatus.BAD_REQUEST); } try {
+
+             * schedule.setDstnAirport(airportService.viewAirport(destination)); } catch
+
+             * (RecordNotFoundException e) { return new ResponseEntity("Airport Not Found",
+
+             * HttpStatus.BAD_REQUEST); }
+
+             */
+
+ 
+
+             // schedule.setDeptDateTime(departureTime);
+
+             // schedule.setArrDateTime(arrivalTime);
+
+             try {
+
+             scheduledFlight.setFlight(flightService.getFlightbyId(flightId));
+
+             } catch (RecordNotFoundException e1) {
+
+                    return new ResponseEntity("Flight Not Found", HttpStatus.BAD_REQUEST);
+
+             }
+
+             scheduledFlight.setSchedule(schedule);
+
+       scheduledFlight.setAvailableSeats(scheduledFlight.getFlight().getTotalSeats());
+
+             try {
+
+                    return new ResponseEntity<ScheduledFlight>(scheduleService.addScheduledFlight(scheduledFlight),
+
+                                 HttpStatus.OK);
+
+             } catch (Exception e) {
+
+                    return new ResponseEntity("Error adding Flight." + e, HttpStatus.BAD_REQUEST);
+
+             }
+
+ 
+
+       }
+
+ 
+
+       @GetMapping("/getall")
+
+       public ResponseEntity<?> viewAllSF() {
+
+             return new ResponseEntity(scheduleService.viewAllScheduledFlights(), HttpStatus.OK);
+
+       }
+
+ 
+
+       @GetMapping("/getavailable")
+
+       public ResponseEntity<?> getAvailableSchedules() {
+
+             return new ResponseEntity<List<ScheduledFlight>>(scheduleService.viewAvailableFlights(), HttpStatus.OK);
+
+       }
+
+ 
+
+       @DeleteMapping("/delete/{scheduleFlightId}")
+
+       public ResponseEntity<?> deleteSchedule(@PathVariable Integer scheduleFlightId) {
+
+             return new ResponseEntity<ScheduledFlight>(scheduleService.deleteSchedule(scheduleFlightId), HttpStatus.OK);
+
+       }
+
+ 
+
+}
+
+ 
+
+ ,,,,,,,,,,,,,,
+ package com.flight.exceptions;
+
+ 
+
+public class RecordAlreadyPresentException extends RuntimeException {
+
+       /**
+
+       *
+
+        */
+
+       private static final long serialVersionUID = 1L;
+
+ 
+
+       public RecordAlreadyPresentException(String s) {
+
+             super(s);
+
+       }
+
+}
+
+package com.flight.exceptions;
+
+ 
+
+public class RecordNotFoundException extends RuntimeException {
+
+       /**
+
+       *
+
+        */
+
+       private static final long serialVersionUID = 1L;
+
+ 
+
+       public RecordNotFoundException(String s) {
+
+             super(s);
+
+       }
+
+ 
+
+}
+
+package com.flight.repository;
+
+ 
+
+import java.util.Optional;
+
+ 
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import org.springframework.data.jpa.repository.Query;
+
+import org.springframework.stereotype.Repository;
+
+ 
+
+import com.flight.entity.AirlineEntity;
+
+@Repository
+
+public interface AirlineRepository extends JpaRepository<AirlineEntity, Integer>{
+
+ 
+
+              @Query("SELECT t FROM AirlineEntity t WHERE t.airlineName = ?1")
+
+              Optional<AirlineEntity> findByAirlineName(String airlineName);
+
+             
+
+}
+
+package com.flight.repository;
+
+ 
+
+import java.util.List;
+
+ 
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import org.springframework.data.jpa.repository.Query;
+
+import org.springframework.stereotype.Repository;
+
+ 
+
+import com.flight.entity.BookingRecord;
+
+ 
+
+@Repository
+
+public interface BookingRepository extends JpaRepository<BookingRecord, Long> {
+
+ 
+
+              @Query("SELECT t FROM BookingRecord t WHERE t.emailId = ?1")
+
+              List<BookingRecord> findByEmail(String emailId);
+
+ 
+
+}
+
+package com.flight.repository;
+
+ 
+
+import java.util.Optional;
+
+ 
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import org.springframework.data.jpa.repository.Query;
+
+import org.springframework.stereotype.Repository;
+
+ 
+
+import com.flight.entity.Discount;
+
+@Repository
+
+public interface DiscountRepository extends JpaRepository<Discount, Integer>{
+
+ 
+
+              @Query("SELECT t FROM Discount t WHERE t.discountCode = ?1")
+
+              Optional<Discount> findByDiscountCode(String discountCode);
+
+}
+
+package com.flight.repository;
+
+ 
+
+import java.util.Optional;
+
+ 
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import org.springframework.data.jpa.repository.Modifying;
+
+import org.springframework.data.jpa.repository.Query;
+
+import org.springframework.data.repository.query.Param;
+
+import org.springframework.stereotype.Repository;
+
+ 
+
+import com.flight.entity.FlightEntity;
+
+ 
+
+@Repository
+
+public interface FlightRepository extends JpaRepository<FlightEntity, Integer> {
+
+             
+
+              @Query("SELECT t FROM FlightEntity t WHERE t.flightCode = ?1")
+
+              Optional<FlightEntity> findByFlightName(String flightCode);
+
+             
+
+              @Modifying
+
+              @Query("delete from FlightEntity b where b.flightCode=:flightCode")
+
+              void deleteByFlightName(@Param("flightCode") String flightCode);
+
+ 
+
+}
+
+package com.flight.repository;
+
+ 
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import org.springframework.stereotype.Repository;
+
+ 
+
+import com.flight.entity.ScheduledFlight;
+
+@Repository
+
+public interface ScheduleFlightRepository extends JpaRepository<ScheduledFlight, Integer>{
+
+ 
+
+}
+
+package com.flight.repository;
+
+ 
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import org.springframework.stereotype.Repository;
+
+ 
+
+import com.flight.entity.Schedule;
+
+ 
+
+@Repository
+
+public interface ScheduleRepository extends JpaRepository<Schedule, Integer>{
+
+ 
+
+}
+
+ 
